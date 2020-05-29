@@ -24,31 +24,73 @@ from sqlalchemy.orm import sessionmaker
 Session = sessionmaker(bind=engine)
 session = Session()
 
+from datetime import datetime,timedelta
+
+today=datetime.today().date()
+rows=session.query(task).filter(task.deadline==today).all()
+
 while (True):
+
     print("1) Today's tasks")
-    print("2) Add task")
+    print("2) Week's tasks")
+    print("3) All tasks")
+    print("4) Add task")
     print("0) Exit")
+
     n = int(input())
 
     if n == 0:
         print("Bye!")
         break;
 
-    count = 1
-
     if n == 1:
-        tasks = session.query(task).all()
 
-        for task_x in tasks:
-            print("{0}. {1}".format(count, task_x))
+        count = 1
+
+        tasks = session.query(task).filter(task.deadline == datetime.today().date()).all()
+
+        for task_today in tasks:
+            print("{0}. {1}".format(count, task_today))
             count += 1
         if count == 1:
             print("Nothing to do!")
 
     if n == 2:
-        print("Enter task")
-        task_new = input()
-        new_task = task(task=task_new)
+
+        count = 1
+
+        tasks = session.query(task).filter(task.deadline == datetime.today().date() + timedelta(days=7)).all()
+
+        for task_week in tasks:
+            print("{0}. {1}".format(count, task_week))
+            count += 1
+        if count == 1:
+            print("Nothing to do!")
+
+    if n == 3:
+
+        count = 1
+
+        tasks = session.query(task).all()
+
+        for task_x in tasks:
+            print("{0}. {1}".format(count, task_x))
+            count += 1
+
+        if count == 1:
+            print("Nothing to do!")
+
+    if n == 4:
+        print("Enter activity")
+        activity = input()
+
+        print("Enter deadline")
+        activity_deadline_str = input()
+        activity_deadline = datetime.strptime(activity_deadline_str, '%Y-%m-%d').date()
+
+        new_task = task(task=activity, deadline=activity_deadline)
+
         session.add(new_task)
         session.commit()
+
         print("The task has been added!")
