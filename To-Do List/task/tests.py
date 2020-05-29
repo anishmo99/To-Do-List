@@ -15,7 +15,9 @@ menu = """
 1) Today's tasks
 2) Week's tasks
 3) All tasks
-4) Add task
+4) Missed tasks
+5) Add task
+6) Delete task
 0) Exit
 """.strip().lower()
 
@@ -31,7 +33,8 @@ weekdays = [
 
 
 class ToDoList(StageTest):
-    db_name = 'list.db'
+    db_name = 'todo.db'
+    tasks_before_delete = None
     is_completed = False
 
     def generate(self) -> List[TestCase]:
@@ -55,6 +58,20 @@ class ToDoList(StageTest):
                 stdin=[self.check_deadlines_all_tasks,
                        self.ignore_output,
                        self.check_weeks_task_output]
+            ),
+
+            TestCase(
+                stdin=[self.check_missed_tasks,
+                       self.check_missed_tasks_ignore_output,
+                       self.check_list_of_missed_tasks]
+            ),
+
+            TestCase(
+                stdin=[
+                    self.check_delete_task,
+                    self.delete_tasks,
+                    self.check_if_tasks_deleted
+                ]
             )
         ]
 
@@ -66,9 +83,9 @@ class ToDoList(StageTest):
             return CheckResult.wrong('Your program doesn\'t show the menu from example')
 
     def check_db_file(self, reply, attach):
-        if not os.path.exists('list.db'):
-            return CheckResult.wrong('You didn\'t create the database file. It should be name list.db')
-        shutil.copy2('list.db', 'temp.db')
+        if not os.path.exists('todo.db'):
+            return CheckResult.wrong('You didn\'t create the database file. It should be name todo.db')
+        shutil.copy2('todo.db', 'temp.db')
 
         tables_in_db = self.execute('SELECT  name FROM sqlite_master '
                                     'WHERE type =\'table\' AND name '
@@ -103,7 +120,7 @@ class ToDoList(StageTest):
                         day.title()))
 
         today = datetime.today().date()
-        return '4\nFirst task\n{}\n4\nSecond task\n{}\n1'.format(today, today)
+        return '5\nFirst task\n{}\n5\nSecond task\n{}\n1'.format(today, today)
 
     def check_added_task(self, output):
         tasks = self.execute('SELECT * FROM task')
@@ -136,7 +153,7 @@ class ToDoList(StageTest):
         first_date = datetime.today().date()
         second_date = first_date + timedelta(days=3)
         last_date = first_date + timedelta(days=6)
-        test_input = "4\nDeadline is today\n{}\n4\nDeadline in 3 days\n{}\n4\nDeadline in 6 days\n{}" \
+        test_input = "5\nDeadline is today\n{}\n5\nDeadline in 3 days\n{}\n5\nDeadline in 6 days\n{}" \
             .format(first_date, second_date, last_date).strip()
         return test_input
 
@@ -200,10 +217,69 @@ class ToDoList(StageTest):
         self.is_completed = True
         return '0'
 
+    def check_missed_tasks(self, output):
+        today = datetime.today().date()
+        minus_one_day = today - timedelta(days=1)
+        minus_two_days = today - timedelta(days=2)
+        return '5\nFirst missed task\n{}\n5\nSecond missed task\n{}'.format(minus_two_days, minus_one_day)
+
+    def check_missed_tasks_ignore_output(self, output):
+        return '4'
+
+    def check_list_of_missed_tasks(self, output):
+        if 'missed tasks' not in output.lower():
+            return CheckResult.wrong('Your program doesn\'t show missed tasks!')
+
+        blocks = output.strip().split('\n\n')
+        if len(blocks) != 2:
+            return CheckResult.wrong(
+                'There is something wrong with format of output. Please make sure that you print only one empty line after printing missed tasks!')
+
+        tasks = blocks[0].lower()
+
+        if ('first missed task' not in tasks
+                or 'second missed task' not in tasks):
+            return CheckResult.wrong('When you print missed task you don\'t print all of them!')
+
+        lines = tasks.splitlines()
+        index_of_first_task = 0
+        index_of_second_task = 0
+        for i, line in enumerate(lines):
+            if 'first missed task' in line:
+                index_of_first_task = i
+            if 'second missed task' in line:
+                index_of_second_task = i
+
+        if index_of_first_task > index_of_second_task:
+            return CheckResult.wrong('Missed tasks should be sorted by their deadlines!')
+
+        self.is_completed = True
+        return '0'
+
+    def check_delete_task(self, output):
+        self.execute('DELETE FROM task')
+        first_date = datetime.today().date()
+        second_date = first_date + timedelta(days=3)
+        last_date = first_date + timedelta(days=6)
+        test_input = "5\nDeadline is today\n{}\n5\nDeadline in 3 days\n{}\n5\nDeadline in 6 days\n{}\n6" \
+            .format(first_date, second_date, last_date).strip()
+        return test_input
+
+    def delete_tasks(self, output):
+        ToDoList.tasks_before_delete = len(self.execute('SELECT * FROM task'))
+        return '1\n6\n1\n6\n1'
+
+    def check_if_tasks_deleted(self, output):
+        tasks_after_delete = len(self.execute('SELECT * FROM task'))
+        if not tasks_after_delete < ToDoList.tasks_before_delete:
+            return CheckResult.wrong('There is should be less rows in the table after some task has been deleted!')
+        self.is_completed = True
+        return '0'
+
     def after_all_tests(self):
-        if not os.path.exists('list.db'):
+        if not os.path.exists('todo.db'):
             return
-        with open('list.db', 'w') as main_db:
+        with open('todo.db', 'w') as main_db:
             if os.path.exists('temp.db'):
                 temp_file = open('temp.db', 'r')
                 main_db.write(temp_file.read())
@@ -230,7 +306,7 @@ class ToDoList(StageTest):
 class DbTool:
 
     def __init__(self, file):
-        self.engine = create_engine('sqlite:///list.db?check_same_thread=false')
+        self.engine = create_engine('sqlite:///todo.db?check_same_thread=false')
         self.session = sessionmaker(bind=self.engine)()
 
     def close(self):
